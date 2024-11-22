@@ -1,0 +1,12 @@
+Hello Sean
+
+Here is my feedback: 
+- explore either scappy or use ping3 to try to reach available device (online device). 
+- create a secondary list consisting opf the devices that responded to output to another CSV file
+This will ensure your program does both reading and writing!        
+You are off to a great start! I have no doubt you can implement these requirements. 
+Please work on these implementations and let me know if you have any questions. 
+
+Best, 
+
+Profe Antunez 
