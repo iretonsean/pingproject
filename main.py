@@ -1,90 +1,103 @@
 import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from ping3 import verbose_ping
-import platform
+from ping3 import ping
 import threading
-import io
-import sys
+import csv
 from tkinter import filedialog
 
 # Global variables
 pinging = False
 csv_file_path = None
+hosts_list = []
 
 def add_label_to_results(text):
     """Helper function to add labels to the results frame."""
-    result_label = ttk.Label(results_inner, text=text)
-    result_label.pack(padx=15, pady=5, anchor="w", fill="x")
+    result_label = ttk.Label(results_inner, text=text, anchor="w", wraplength=500)
+    result_label.pack(padx=15, pady=5, fill="x")
     # Automatically scroll down
     results_canvas.update_idletasks()
     results_canvas.yview_moveto(1)
 
 def browse_csv():
-    """Open a file dialog to choose a CSV file and store its path."""
-    global csv_file_path
+    """Open a file dialog to choose a CSV file and extract hostnames."""
+    global csv_file_path, hosts_list
     file_path = filedialog.askopenfilename(
         title="Select CSV File",
         filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
     )
     if file_path:
         csv_file_path = file_path
-        # Update the entry field to indicate a CSV file is chosen
-        entry.delete(0, tk.END)
-        entry.insert(0, f"CSV: {file_path}")
-
-def start_pinging():
-    """Starts the pinging process."""
-    global pinging, csv_file_path
-    pinging = True
-
-    host = entry.get().strip()
-
-    # If no host was entered, but a CSV is selected, read from CSV
-    if host == "" and csv_file_path:
+        hosts_list = []  # Clear previous host list
         try:
             with open(csv_file_path, 'r') as f:
-                lines = f.readlines()
-                # Take the first non-empty line as the host
-                lines = [line.strip() for line in lines if line.strip()]
-                if not lines:
+                reader = csv.reader(f)
+                # Flatten CSV content to a list of hosts
+                hosts_list = [item.strip() for row in reader for item in row if item.strip()]
+                if not hosts_list:
                     add_label_to_results("CSV file is empty or contains no valid hosts.")
                     return
-                host = lines[0]
         except Exception as e:
             add_label_to_results(f"Error reading CSV: {e}")
             return
 
-    if host == "":
-        add_label_to_results("Enter a site URL or select a CSV file containing a host.")
+        # Update the entry field to indicate a CSV file is chosen
+        entry.delete(0, tk.END)
+        entry.insert(0, f"Loaded {len(hosts_list)} host(s) from CSV")
+
+def start_pinging():
+    """Starts the pinging process."""
+    global pinging, csv_file_path, hosts_list
+    pinging = True
+
+    host = entry.get().strip()
+
+    # If no host was entered, but hosts are loaded from the CSV
+    if host.startswith("Loaded") and hosts_list:
+        threading.Thread(target=ping_hosts_from_list, args=(hosts_list,), daemon=True).start()
         return
 
-    # Run the pinging process in a separate thread to avoid freezing the GUI
-    threading.Thread(target=ping_system, args=(host,), daemon=True).start()
+    # If a single host is entered manually
+    if host == "" or host.startswith("CSV:"):
+        add_label_to_results("Enter a site URL or load a CSV file containing valid hosts.")
+        return
+
+    # Start pinging a single host
+    threading.Thread(target=ping_host, args=(host,), daemon=True).start()
 
 def stop_pinging():
     """Stops the pinging process."""
     global pinging
     pinging = False
 
-def ping_system(host):
-    """Continuously pings the host until stopped."""
+def ping_host(host):
+    """Pings a single host continuously until stopped."""
     global pinging
     while pinging:
-        # Capture the stdout output of verbose_ping
-        output = io.StringIO()
-        sys.stdout = output  # Redirect stdout
         try:
-            verbose_ping(host, count=1)
-        finally:
-            sys.stdout = sys.__stdout__  # Restore stdout
+            response = ping(host, timeout=2)
+            if response is None:
+                add_label_to_results(f"{host} is unreachable!")
+            else:
+                add_label_to_results(f"{host} responded in {response * 1000:.2f} ms")
+        except Exception as e:
+            add_label_to_results(f"Error pinging {host}: {e}")
+            break
 
-        # Get the captured output
-        response = output.getvalue().strip()
-        if "timed out" in response or "unreachable" in response:
-            add_label_to_results(f"{host} is down!")
-        else:
-            add_label_to_results(response)
+def ping_hosts_from_list(hosts):
+    """Pings multiple hosts from a list."""
+    global pinging
+    for host in hosts:
+        if not pinging:
+            break
+        try:
+            response = ping(host, timeout=2)
+            if response is None:
+                add_label_to_results(f"{host} is unreachable!")
+            else:
+                add_label_to_results(f"{host} responded in {response * 1000:.2f} ms")
+        except Exception as e:
+            add_label_to_results(f"Error pinging {host}: {e}")
 
 root = ttk.Window(themename="darkly")
 root.geometry("600x400")
