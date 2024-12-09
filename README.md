@@ -40,8 +40,8 @@ pip install ping3 ttkbootstrap
 
 1. Clone or download the repository:
    ```bash
-   git clone <repository_url>
-   cd <repository_folder>
+   git clone https://github.com/iretonsean/pingproject.git
+   cd pingproject
    ```
 
 2. Run the Python script:
